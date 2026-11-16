@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.KeepWatch" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:statusBarColor">#141821</item>
+        <item name="android:windowBackground">#141821</item>
+        <item name="android:navigationBarColor">#141821</item>
+    </style>
+</resources>
