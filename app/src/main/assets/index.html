@@ -1,0 +1,865 @@
+<title>Keep Watch</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* Layout: single-screen war-room — gold/lives/wave rail up top, the
+   battlefield canvas centered, a scrollable armory shelf of towers
+   below it, modal overlays for tower detail and defeat */
+:root{
+  --bg:#141821;
+  --panel:#1c2230;
+  --panel-light:#2a3244;
+  --border:#3a4257;
+  --text:#ece6d6;
+  --text-dim:#8d94a8;
+  --accent:#d4af37;
+  --accent-ink:#1b1f2a;
+  --grass-a:#24402a;
+  --grass-b:#1f3824;
+  --path:#4a3d30;
+  --hp:#5fb86a;
+  --danger:#c0514a;
+  --slow:#5b8fd1;
+  --font-display:'Cinzel', Georgia, serif;
+  --font-body:'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color-scheme: dark;
+}
+*{box-sizing:border-box;}
+html,body{height:100%;}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--font-body);
+  min-height:100%;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px));
+  padding-block:16px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:12px;
+}
+header{text-align:center; display:flex; flex-direction:column; gap:2px;}
+h1{
+  font-family:var(--font-display);
+  font-size:1.5rem;
+  margin:0;
+  color:var(--accent);
+  letter-spacing:0.03em;
+  text-wrap:balance;
+}
+.tagline{color:var(--text-dim); font-size:0.78rem; margin:0;}
+
+.stats-bar{
+  display:flex; gap:8px; flex-wrap:wrap; justify-content:center;
+  width:100%; max-width:600px;
+}
+.stat{
+  background:var(--panel); border:1px solid var(--border); border-radius:10px;
+  padding:7px 11px; display:flex; align-items:center; gap:6px; font-size:0.88rem;
+  font-weight:700; min-width:0;
+}
+.stat .icon{font-size:1rem;}
+.stat .value{font-variant-numeric:tabular-nums;}
+#gold{color:var(--accent);}
+#lives{color:#e8a39c;}
+#waveLabel{color:#8fd19a;}
+#highscore{color:var(--text-dim); font-weight:600;}
+
+.board-wrap{
+  width:100%; max-width:600px; position:relative;
+  border:3px solid var(--border); border-radius:12px; overflow:hidden;
+  background:var(--panel); line-height:0;
+}
+canvas{display:block; width:100%; height:auto; touch-action:manipulation;}
+
+.toast{
+  position:absolute; top:10px; left:50%; transform:translateX(-50%);
+  background:rgba(10,10,14,0.92); color:#fff; padding:6px 14px; border-radius:8px;
+  font-size:0.82rem; opacity:0; transition:opacity 0.25s; pointer-events:none;
+  white-space:nowrap; max-width:90%; overflow:hidden; text-overflow:ellipsis;
+}
+.toast.show{opacity:1;}
+
+.controls-row{display:flex; gap:8px; width:100%; max-width:600px;}
+.controls-row button{flex:1;}
+
+button{
+  font-family:inherit; font-size:0.86rem; font-weight:700; cursor:pointer;
+  border:none; border-radius:10px; background:var(--accent); color:var(--accent-ink);
+  padding:10px 14px; -webkit-appearance:none; appearance:none;
+}
+button:active{transform:scale(0.97);}
+button:disabled{opacity:0.5; cursor:default;}
+button.secondary{background:var(--panel-light); color:var(--text); border:1px solid var(--border);}
+button:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+
+.shop{
+  display:flex; gap:8px; width:100%; max-width:600px; overflow-x:auto;
+  padding-bottom:4px;
+}
+.tower-btn{
+  flex:0 0 auto; width:82px; background:var(--panel); border:2px solid var(--border);
+  border-radius:10px; padding:8px 6px; text-align:center; color:var(--text);
+  display:flex; flex-direction:column; align-items:center; gap:4px;
+}
+.tower-btn.selected{border-color:var(--accent); background:var(--panel-light);}
+.tower-btn .swatch{width:38px;height:38px;border-radius:10px; flex:none; display:block; background:rgba(255,255,255,0.04);}
+.tower-btn .name{font-size:0.72rem; font-weight:700;}
+.tower-btn .cost{font-size:0.72rem; color:var(--accent); font-variant-numeric:tabular-nums;}
+
+footer{color:var(--text-dim); font-size:0.74rem; text-align:center; max-width:600px;}
+
+.overlay{
+  position:fixed; inset:0; background:rgba(5,6,10,0.68);
+  display:flex; align-items:center; justify-content:center; z-index:50;
+  padding:16px;
+}
+.overlay[hidden]{display:none;}
+.modal{
+  background:var(--panel); border:2px solid var(--border); border-radius:14px;
+  padding:20px; max-width:320px; width:100%; text-align:center;
+}
+.modal h2{font-family:var(--font-display); color:var(--accent); margin:0 0 10px;}
+.modal .row{display:flex; justify-content:space-between; margin:6px 0; font-size:0.9rem; gap:8px;}
+.modal .row span:last-child{font-variant-numeric:tabular-nums; font-weight:700;}
+.modal-actions{display:flex; gap:8px; margin-top:12px;}
+.modal-actions button{flex:1;}
+.modal p{color:var(--text-dim); font-size:0.9rem;}
+
+@media (prefers-reduced-motion: reduce){
+  button:active{transform:none;}
+  .toast{transition:none;}
+}
+</style>
+
+<header>
+  <h1>⚔️ Keep Watch</h1>
+  <p class="tagline">Son kale ayakta kalsın.</p>
+</header>
+
+<div class="stats-bar">
+  <div class="stat"><span class="icon">🪙</span><span class="value" id="gold">180</span></div>
+  <div class="stat"><span class="icon">❤️</span><span class="value" id="lives">20</span></div>
+  <div class="stat"><span class="icon">🌊</span><span class="value" id="waveLabel">Dalga 0</span></div>
+  <div class="stat"><span class="icon">🏆</span><span class="value" id="highscore">En iyi: 0</span></div>
+</div>
+
+<div class="board-wrap" id="boardWrap">
+  <canvas id="game" aria-label="Savaş alanı"></canvas>
+  <div class="toast" id="toast" role="status"></div>
+</div>
+
+<div class="controls-row">
+  <button id="startWaveBtn" type="button">Dalgayı Başlat</button>
+  <button id="speedBtn" class="secondary" type="button">Hız: 1x</button>
+  <button id="pauseBtn" class="secondary" type="button">Duraklat</button>
+</div>
+
+<div class="shop" id="shop"></div>
+
+<footer>Bir kule seç, yerleştirmek için boş bir hücreye dokun. Yerleşmiş bir kuleye dokunarak yükseltebilir ya da satabilirsin.</footer>
+
+<div class="overlay" id="towerPanel" hidden>
+  <div class="modal">
+    <h2 id="tpName">Kule</h2>
+    <div class="row"><span>Seviye</span><span id="tpLevel">1/3</span></div>
+    <div class="row"><span>Hasar</span><span id="tpDamage">-</span></div>
+    <div class="row"><span>Menzil</span><span id="tpRange">-</span></div>
+    <div class="modal-actions">
+      <button id="tpUpgradeBtn" type="button">Yükselt</button>
+      <button id="tpSellBtn" class="secondary" type="button">Sat</button>
+    </div>
+    <div class="modal-actions">
+      <button id="tpCloseBtn" class="secondary" type="button">Kapat</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="gameOverPanel" hidden>
+  <div class="modal">
+    <h2>Kale Düştü</h2>
+    <p id="goSummary">Hayatta kalınan dalga: 0</p>
+    <div class="modal-actions">
+      <button id="restartBtn" type="button">Tekrar Oyna</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  var COLS = 15, ROWS = 10, CELL = 40;
+  var canvas = document.getElementById('game');
+  var ctx = canvas.getContext('2d');
+  canvas.width = COLS*CELL;
+  canvas.height = ROWS*CELL;
+
+  var WAYPOINTS = [
+    {col:0, row:4}, {col:4,row:4}, {col:4,row:1}, {col:9,row:1},
+    {col:9,row:7}, {col:13,row:7}, {col:13,row:3}, {col:14,row:3}
+  ];
+
+  function cellsOnSegment(a,b){
+    var cells=[];
+    if(a.row===b.row){
+      var stepC=a.col<b.col?1:-1;
+      for(var c=a.col;;c+=stepC){ cells.push({col:c,row:a.row}); if(c===b.col) break; }
+    } else {
+      var stepR=a.row<b.row?1:-1;
+      for(var r=a.row;;r+=stepR){ cells.push({col:a.col,row:r}); if(r===b.row) break; }
+    }
+    return cells;
+  }
+  var pathSet = {};
+  for(var wi=0; wi<WAYPOINTS.length-1; wi++){
+    cellsOnSegment(WAYPOINTS[wi],WAYPOINTS[wi+1]).forEach(function(c){ pathSet[c.col+','+c.row]=true; });
+  }
+  function isPath(col,row){ return !!pathSet[col+','+row]; }
+  var wpPx = WAYPOINTS.map(function(w){ return {x:(w.col+0.5)*CELL, y:(w.row+0.5)*CELL}; });
+
+  var TOWER_TYPES = {
+    archer:{name:'Okçu', cost:50, range:4.6, damage:11, rate:550, splash:0, slow:0, color:'#7cb342', proj:'#c5e1a5'},
+    mage:{name:'Büyücü', cost:70, range:4.2, damage:7, rate:750, splash:0, slow:0.45, color:'#5c6bc0', proj:'#9fa8da'},
+    cannon:{name:'Topçu', cost:95, range:3.4, damage:26, rate:1300, splash:1.4, slow:0, color:'#8d6e63', proj:'#d7ccc8'},
+    sniper:{name:'Keskin Nişancı', cost:145, range:7.5, damage:52, rate:1700, splash:0, slow:0, color:'#757575', proj:'#eeeeee'}
+  };
+  var TOWER_ORDER = ['archer','mage','cannon','sniper'];
+
+  var ENEMY_TYPES = {
+    grunt:{hp:26, speed:1.3, reward:5, dmg:1, radius:12, color:'#8d6e63'},
+    runner:{hp:15, speed:2.3, reward:6, dmg:1, radius:10, color:'#fdd835'},
+    armored:{hp:70, speed:0.85, reward:11, dmg:1, radius:14, color:'#546e7a'},
+    boss:{hp:380, speed:0.7, reward:55, dmg:3, radius:19, color:'#c0392b'}
+  };
+
+  // Character look for each tower/enemy type. Everything is drawn with
+  // plain canvas paths (no sprite images) so each unit reads as a small
+  // chibi-style character instead of a plain token.
+  var CHAR_CFG = {
+    archer:{skin:'#ffdbac', outfit:'#2e7d32', accent:'#8d6e63', hairStyle:'spiky', hair:'#1b5e20', eyeColor:'#1b5e20', accessory:'bow', ears:true, mouth:'smile'},
+    mage:{skin:'#ffe0bd', outfit:'#3949ab', accent:'#ffd54f', hairStyle:'wizardHat', hair:'#512da8', eyeColor:'#5c6bc0', accessory:'staff', mouth:'smile'},
+    cannon:{skin:'#f0c090', outfit:'#795548', accent:'#ffb74d', hairStyle:'gogglesCap', hair:'#e65100', eyeColor:'#4e342e', accessory:'cannonHeld', mouth:'smile'},
+    sniper:{skin:'#f5e3d0', outfit:'#37474f', accent:'#c0392b', hairStyle:'hood', hair:'#1c2327', eyeColor:'#c62828', accessory:'rifle', mouth:'line'}
+  };
+  var ENEMY_CFG = {
+    grunt:{skin:'#8fae5c', outfit:'#6d4c30', accent:'#4e342e', hairStyle:'hornsSmall', hair:'#3e2723', eyeColor:'#ffeb3b', ears:true, mouth:'fang'},
+    runner:{skin:'#ffb74d', outfit:'#e65100', accent:'#fff3e0', hairStyle:'foxEars', hair:'#bf360c', eyeColor:'#c62828', mouth:'fang'},
+    armored:{skin:'#90a4ae', outfit:'#455a64', accent:'#cfd8dc', hairStyle:'armorHelm', hair:'#263238', eyeColor:'#4fc3f7', mouth:'line'},
+    boss:{skin:'#b71c1c', outfit:'#4a148c', accent:'#ff6f00', hairStyle:'hornsBig', hair:'#1a0000', eyeColor:'#ff9100', mouth:'fang', glow:true, glowColor:'rgba(255,110,0,0.55)'}
+  };
+
+  function eyeDot(c,x,y,r,color){
+    c.beginPath(); c.ellipse(x,y,r,r*1.3,0,0,Math.PI*2);
+    c.fillStyle=color; c.fill();
+    c.beginPath(); c.arc(x-r*0.32,y-r*0.4,r*0.38,0,Math.PI*2);
+    c.fillStyle='#fff'; c.fill();
+  }
+
+  // Draws one small anime-style chibi character: big head, big eyes,
+  // a simple body, and a hairstyle/accessory pair that gives each
+  // type its own silhouette. cx,cy is the character's feet-ish center
+  // (same point a plain token used to be drawn at), s scales the whole
+  // figure, cfg.flip mirrors it to face left, cfg.bob nudges it
+  // vertically for a light idle/walk wobble, cfg.glow draws a soft halo.
+  function drawCharacter(c, cx, cy, s, cfg){
+    c.save();
+    if(cfg.flip){ c.translate(cx,cy); c.scale(-1,1); c.translate(-cx,-cy); }
+    cy += (cfg.bob||0);
+    var hr=8*s;
+    var headCy=cy-7*s;
+    var bodyTop=cy-1*s;
+
+    if(cfg.glow){
+      var g=c.createRadialGradient(cx,cy-4*s,2*s,cx,cy-4*s,15*s);
+      g.addColorStop(0, cfg.glowColor||'rgba(255,220,120,0.55)');
+      g.addColorStop(1,'rgba(255,220,120,0)');
+      c.beginPath(); c.arc(cx,cy-4*s,15*s,0,Math.PI*2); c.fillStyle=g; c.fill();
+    }
+
+    if(cfg.accessory==='cannonHeld'){
+      c.save(); c.translate(cx+5*s, bodyTop+3*s); c.rotate(-0.5);
+      c.fillStyle='#5d4037'; c.fillRect(-2.2*s,-9*s,4.4*s,10*s);
+      c.fillStyle='#3e2723'; c.beginPath(); c.arc(0,-9*s,2.6*s,0,Math.PI*2); c.fill();
+      c.restore();
+    }
+
+    if(cfg.hairStyle==='hornsBig'){
+      c.fillStyle=cfg.outfit;
+      c.beginPath(); c.moveTo(cx-5*s,bodyTop+2*s); c.quadraticCurveTo(cx-14*s,bodyTop-4*s,cx-10*s,bodyTop+8*s); c.closePath(); c.fill();
+      c.beginPath(); c.moveTo(cx+5*s,bodyTop+2*s); c.quadraticCurveTo(cx+14*s,bodyTop-4*s,cx+10*s,bodyTop+8*s); c.closePath(); c.fill();
+    }
+
+    c.beginPath();
+    c.moveTo(cx-5.5*s, bodyTop+9*s);
+    c.quadraticCurveTo(cx-6.5*s, bodyTop+2*s, cx-4*s, bodyTop);
+    c.lineTo(cx+4*s, bodyTop);
+    c.quadraticCurveTo(cx+6.5*s, bodyTop+2*s, cx+5.5*s, bodyTop+9*s);
+    c.closePath();
+    c.fillStyle=cfg.outfit; c.fill();
+    c.lineWidth=Math.max(1,1*s); c.strokeStyle='rgba(0,0,0,0.25)'; c.stroke();
+
+    if(cfg.accent){
+      c.fillStyle=cfg.accent;
+      c.fillRect(cx-5.3*s, bodyTop+5.5*s, 10.6*s, 2*s);
+    }
+
+    c.beginPath(); c.arc(cx,headCy,hr,0,Math.PI*2);
+    c.fillStyle=cfg.skin; c.fill();
+    c.lineWidth=Math.max(1,1*s); c.strokeStyle='rgba(0,0,0,0.2)'; c.stroke();
+
+    if(cfg.ears){
+      c.fillStyle=cfg.skin;
+      c.beginPath(); c.moveTo(cx-hr*0.75,headCy-1*s); c.lineTo(cx-hr*1.9,headCy-4*s); c.lineTo(cx-hr*0.6,headCy+2*s); c.closePath(); c.fill();
+      c.beginPath(); c.moveTo(cx+hr*0.75,headCy-1*s); c.lineTo(cx+hr*1.9,headCy-4*s); c.lineTo(cx+hr*0.6,headCy+2*s); c.closePath(); c.fill();
+    }
+
+    switch(cfg.hairStyle){
+      case 'spiky':
+        c.fillStyle=cfg.hair;
+        c.beginPath(); c.moveTo(cx-hr,headCy-hr*0.3);
+        c.lineTo(cx-hr*0.6,headCy-hr*1.5); c.lineTo(cx-hr*0.1,headCy-hr*0.5);
+        c.lineTo(cx+hr*0.3,headCy-hr*1.6); c.lineTo(cx+hr*0.7,headCy-hr*0.6);
+        c.lineTo(cx+hr,headCy-hr*0.5); c.lineTo(cx+hr*0.8,headCy-hr*1.1);
+        c.quadraticCurveTo(cx,headCy-hr*1.3,cx-hr*0.8,headCy-hr*1.1);
+        c.closePath(); c.fill();
+        break;
+      case 'wizardHat':
+        c.fillStyle=cfg.hair;
+        c.beginPath(); c.moveTo(cx-hr*1.1,headCy-hr*0.6);
+        c.lineTo(cx+hr*0.3,headCy-hr*2.1); c.lineTo(cx+hr*1.1,headCy-hr*0.9);
+        c.closePath(); c.fill();
+        c.beginPath(); c.ellipse(cx-hr*0.1,headCy-hr*0.6,hr*1.25,hr*0.35,0,0,Math.PI*2); c.fill();
+        c.fillStyle=cfg.accent||'#ffd54f';
+        c.beginPath(); c.arc(cx+hr*0.1,headCy-hr*1.3,hr*0.22,0,Math.PI*2); c.fill();
+        break;
+      case 'gogglesCap':
+        c.fillStyle=cfg.hair;
+        c.beginPath(); c.arc(cx,headCy-hr*0.2,hr*1.02,Math.PI,0); c.fill();
+        c.fillStyle='#cfd8dc'; c.strokeStyle='#607d8b'; c.lineWidth=Math.max(0.6,0.8*s);
+        c.beginPath(); c.arc(cx-hr*0.45,headCy-hr*0.1,hr*0.32,0,Math.PI*2); c.fill(); c.stroke();
+        c.beginPath(); c.arc(cx+hr*0.45,headCy-hr*0.1,hr*0.32,0,Math.PI*2); c.fill(); c.stroke();
+        break;
+      case 'hood':
+        c.fillStyle=cfg.hair;
+        c.beginPath(); c.arc(cx,headCy-hr*0.05,hr*1.28,Math.PI*0.95,Math.PI*0.05); c.closePath(); c.fill();
+        break;
+      case 'hornsSmall':
+        c.fillStyle=cfg.hair;
+        c.beginPath(); c.moveTo(cx-hr*0.55,headCy-hr*0.7); c.quadraticCurveTo(cx-hr*0.9,headCy-hr*1.6,cx-hr*0.3,headCy-hr*1.3); c.closePath(); c.fill();
+        c.beginPath(); c.moveTo(cx+hr*0.55,headCy-hr*0.7); c.quadraticCurveTo(cx+hr*0.9,headCy-hr*1.6,cx+hr*0.3,headCy-hr*1.3); c.closePath(); c.fill();
+        break;
+      case 'foxEars':
+        c.fillStyle=cfg.hair;
+        c.beginPath(); c.moveTo(cx-hr*0.6,headCy-hr*0.5); c.lineTo(cx-hr*0.9,headCy-hr*1.9); c.lineTo(cx-hr*0.1,headCy-hr*0.9); c.closePath(); c.fill();
+        c.beginPath(); c.moveTo(cx+hr*0.6,headCy-hr*0.5); c.lineTo(cx+hr*0.9,headCy-hr*1.9); c.lineTo(cx+hr*0.1,headCy-hr*0.9); c.closePath(); c.fill();
+        break;
+      case 'armorHelm':
+        c.fillStyle=cfg.hair;
+        c.beginPath(); c.arc(cx,headCy-hr*0.1,hr*1.12,Math.PI*1.05,Math.PI*1.95); c.closePath(); c.fill();
+        c.fillRect(cx-hr*0.9,headCy-hr*0.15,hr*1.8,hr*0.32);
+        break;
+      case 'hornsBig':
+        c.fillStyle=cfg.hair;
+        c.beginPath(); c.moveTo(cx-hr*0.6,headCy-hr*0.6); c.quadraticCurveTo(cx-hr*1.7,headCy-hr*2.2,cx-hr*0.9,headCy-hr*2.4); c.quadraticCurveTo(cx-hr*0.6,headCy-hr*1.4,cx-hr*0.2,headCy-hr*1.1); c.closePath(); c.fill();
+        c.beginPath(); c.moveTo(cx+hr*0.6,headCy-hr*0.6); c.quadraticCurveTo(cx+hr*1.7,headCy-hr*2.2,cx+hr*0.9,headCy-hr*2.4); c.quadraticCurveTo(cx+hr*0.6,headCy-hr*1.4,cx+hr*0.2,headCy-hr*1.1); c.closePath(); c.fill();
+        break;
+    }
+
+    eyeDot(c, cx-hr*0.4, headCy+hr*0.15, hr*0.2, cfg.eyeColor);
+    eyeDot(c, cx+hr*0.4, headCy+hr*0.15, hr*0.2, cfg.eyeColor);
+
+    if(cfg.mouth==='smile'){
+      c.strokeStyle='rgba(0,0,0,0.45)'; c.lineWidth=Math.max(0.7,0.9*s);
+      c.beginPath(); c.arc(cx,headCy+hr*0.45,hr*0.3,0.15*Math.PI,0.85*Math.PI); c.stroke();
+    } else if(cfg.mouth==='fang'){
+      c.fillStyle='rgba(0,0,0,0.5)';
+      c.fillRect(cx-hr*0.15,headCy+hr*0.45,hr*0.3,hr*0.18);
+      c.fillStyle='#fff';
+      c.beginPath(); c.moveTo(cx+hr*0.05,headCy+hr*0.6); c.lineTo(cx+hr*0.16,headCy+hr*0.6); c.lineTo(cx+hr*0.1,headCy+hr*0.82); c.closePath(); c.fill();
+    } else if(cfg.mouth==='line'){
+      c.strokeStyle='rgba(0,0,0,0.4)'; c.lineWidth=Math.max(0.6,0.8*s);
+      c.beginPath(); c.moveTo(cx-hr*0.22,headCy+hr*0.5); c.lineTo(cx+hr*0.22,headCy+hr*0.5); c.stroke();
+    }
+
+    if(cfg.accessory==='bow'){
+      c.strokeStyle='#6d4c41'; c.lineWidth=Math.max(1,1.6*s);
+      c.beginPath(); c.arc(cx-7*s, bodyTop+4*s, 7*s, -0.7, 0.7); c.stroke();
+      c.strokeStyle='rgba(255,255,255,0.6)'; c.lineWidth=Math.max(0.5,0.6*s);
+      c.beginPath();
+      c.moveTo(cx-7*s+7*s*Math.cos(-0.7), bodyTop+4*s+7*s*Math.sin(-0.7));
+      c.lineTo(cx-7*s+7*s*Math.cos(0.7), bodyTop+4*s+7*s*Math.sin(0.7));
+      c.stroke();
+    } else if(cfg.accessory==='staff'){
+      c.strokeStyle='#5d4037'; c.lineWidth=Math.max(1,1.6*s);
+      c.beginPath(); c.moveTo(cx+6.5*s,bodyTop+10*s); c.lineTo(cx+6.5*s,bodyTop-6*s); c.stroke();
+      c.fillStyle=cfg.accent||'#ffd54f';
+      c.beginPath(); c.arc(cx+6.5*s,bodyTop-7.5*s,2.4*s,0,Math.PI*2); c.fill();
+    } else if(cfg.accessory==='rifle'){
+      c.save(); c.translate(cx+6*s,bodyTop+6*s); c.rotate(-0.35);
+      c.fillStyle='#263238'; c.fillRect(-1.4*s,-10*s,2.8*s,12*s);
+      c.fillStyle='#455a64'; c.fillRect(-2.2*s,-11*s,4.4*s,2.6*s);
+      c.restore();
+    }
+
+    c.restore();
+  }
+
+  var gold=180, lives=20, waveNum=0, gameSpeed=1, paused=false, gameOver=false, animClock=0;
+  var towers=[], enemies=[], projectiles=[], floatTexts=[];
+  var selectedType=null, spawnQueue=[], spawnTimer=0, waveActive=false;
+  var highscore=0;
+  try{ highscore = parseInt(localStorage.getItem('keepwatch_hs')||'0',10)||0; }catch(e){ highscore=0; }
+
+  var goldEl=document.getElementById('gold');
+  var livesEl=document.getElementById('lives');
+  var waveEl=document.getElementById('waveLabel');
+  var hsEl=document.getElementById('highscore');
+  var toastEl=document.getElementById('toast');
+  var shopEl=document.getElementById('shop');
+  var startWaveBtn=document.getElementById('startWaveBtn');
+  var speedBtn=document.getElementById('speedBtn');
+  var pauseBtn=document.getElementById('pauseBtn');
+  var towerPanel=document.getElementById('towerPanel');
+  var gameOverPanel=document.getElementById('gameOverPanel');
+
+  function fmtHS(){ hsEl.textContent='En iyi: '+highscore; }
+
+  function buildShop(){
+    shopEl.innerHTML='';
+    TOWER_ORDER.forEach(function(key){
+      var t=TOWER_TYPES[key];
+      var btn=document.createElement('button');
+      btn.type='button';
+      btn.className='tower-btn';
+      btn.dataset.type=key;
+
+      var icon=document.createElement('canvas');
+      icon.className='swatch'; icon.width=48; icon.height=48;
+      btn.appendChild(icon);
+
+      var nameSpan=document.createElement('span');
+      nameSpan.className='name'; nameSpan.textContent=t.name;
+      btn.appendChild(nameSpan);
+
+      var costSpan=document.createElement('span');
+      costSpan.className='cost'; costSpan.textContent='🪙'+t.cost;
+      btn.appendChild(costSpan);
+
+      var ictx=icon.getContext('2d');
+      drawCharacter(ictx, 24, 29, 1.3, Object.assign({}, CHAR_CFG[key], {bob:0, flip:false, glow:false}));
+
+      btn.addEventListener('click', function(){
+        if(gameOver) return;
+        var k=this.dataset.type;
+        selectedType = (selectedType===k) ? null : k;
+        updateShopSelection();
+        closeTowerPanelUI();
+      });
+      shopEl.appendChild(btn);
+    });
+  }
+  function updateShopSelection(){
+    Array.prototype.forEach.call(shopEl.children, function(c){
+      c.classList.toggle('selected', c.dataset.type===selectedType);
+    });
+  }
+
+  var toastTimer=null;
+  function showToast(msg){
+    toastEl.textContent=msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer=setTimeout(function(){ toastEl.classList.remove('show'); },1400);
+  }
+
+  function buildWave(n){
+    var list=[];
+    var count=6+Math.floor(n*1.6);
+    for(var i=0;i<count;i++){
+      var type='grunt';
+      if(n>=3 && i%4===1) type='runner';
+      if(n>=5 && i%5===3) type='armored';
+      list.push(type);
+    }
+    if(n%5===0) list.push('boss');
+    return list;
+  }
+
+  function startWave(){
+    if(waveActive||gameOver) return;
+    waveNum++;
+    spawnQueue=buildWave(waveNum);
+    spawnTimer=0;
+    waveActive=true;
+    startWaveBtn.disabled=true;
+    startWaveBtn.textContent='Dalga '+waveNum+' sürüyor...';
+    waveEl.textContent='Dalga '+waveNum;
+  }
+  startWaveBtn.addEventListener('click', startWave);
+
+  speedBtn.addEventListener('click', function(){
+    gameSpeed = gameSpeed===1?2:(gameSpeed===2?3:1);
+    speedBtn.textContent='Hız: '+gameSpeed+'x';
+  });
+  pauseBtn.addEventListener('click', function(){
+    paused=!paused;
+    pauseBtn.textContent=paused?'Devam Et':'Duraklat';
+  });
+
+  function towerAt(col,row){
+    for(var i=0;i<towers.length;i++){ if(towers[i].col===col && towers[i].row===row) return towers[i]; }
+    return null;
+  }
+
+  function canvasPosFromEvent(evt){
+    var rect=canvas.getBoundingClientRect();
+    var touch = evt.changedTouches && evt.changedTouches.length ? evt.changedTouches[0] : null;
+    var clientX = touch ? touch.clientX : evt.clientX;
+    var clientY = touch ? touch.clientY : evt.clientY;
+    var scaleX=canvas.width/rect.width;
+    var scaleY=canvas.height/rect.height;
+    return { x:(clientX-rect.left)*scaleX, y:(clientY-rect.top)*scaleY };
+  }
+
+  var lastTapTime=0;
+  function handleTap(evt){
+    evt.preventDefault();
+    var now=Date.now();
+    if(now-lastTapTime<80) return; // avoid double-fire from click+touchend
+    lastTapTime=now;
+    if(gameOver) return;
+    var pos=canvasPosFromEvent(evt);
+    var col=Math.floor(pos.x/CELL), row=Math.floor(pos.y/CELL);
+    if(col<0||col>=COLS||row<0||row>=ROWS) return;
+
+    var existing=towerAt(col,row);
+    if(existing){
+      selectedType=null; updateShopSelection();
+      openTowerPanelUI(existing);
+      return;
+    }
+    if(selectedType){
+      if(isPath(col,row)){ showToast('Yolun üzerine kule konamaz'); return; }
+      var def=TOWER_TYPES[selectedType];
+      if(gold<def.cost){ showToast('Yeterli altının yok'); return; }
+      gold-=def.cost;
+      towers.push({col:col,row:row,type:selectedType,level:1,invested:def.cost,cooldown:0,facing:false,attackFlash:0,bobSeed:Math.random()*10});
+      selectedType=null; updateShopSelection();
+      refreshStats();
+    }
+  }
+  canvas.addEventListener('click', handleTap);
+  canvas.addEventListener('touchend', handleTap, {passive:false});
+
+  var activePanelTower=null;
+  function levelMult(level){ return level===1?1:(level===2?1.55:2.3); }
+  function upgradeCost(t){ var def=TOWER_TYPES[t.type]; return Math.round(def.cost*0.75*t.level); }
+
+  function openTowerPanelUI(t){
+    activePanelTower=t;
+    var def=TOWER_TYPES[t.type];
+    document.getElementById('tpName').textContent=def.name+' Kulesi';
+    document.getElementById('tpLevel').textContent=t.level+'/3';
+    document.getElementById('tpDamage').textContent=Math.round(def.damage*levelMult(t.level));
+    document.getElementById('tpRange').textContent=def.range.toFixed(1)+' hücre';
+    var upgradeBtn=document.getElementById('tpUpgradeBtn');
+    if(t.level>=3){ upgradeBtn.textContent='Maksimum Seviye'; upgradeBtn.disabled=true; }
+    else {
+      var cost=upgradeCost(t);
+      upgradeBtn.textContent='Yükselt ('+cost+' 🪙)';
+      upgradeBtn.disabled = gold<cost;
+    }
+    towerPanel.hidden=false;
+  }
+  function closeTowerPanelUI(){ towerPanel.hidden=true; activePanelTower=null; }
+
+  document.getElementById('tpCloseBtn').addEventListener('click', closeTowerPanelUI);
+  document.getElementById('tpUpgradeBtn').addEventListener('click', function(){
+    if(!activePanelTower||activePanelTower.level>=3) return;
+    var cost=upgradeCost(activePanelTower);
+    if(gold<cost){ showToast('Yeterli altının yok'); return; }
+    gold-=cost;
+    activePanelTower.invested+=cost;
+    activePanelTower.level++;
+    refreshStats();
+    openTowerPanelUI(activePanelTower);
+  });
+  document.getElementById('tpSellBtn').addEventListener('click', function(){
+    if(!activePanelTower) return;
+    var refund=Math.round(activePanelTower.invested*0.6);
+    gold+=refund;
+    towers=towers.filter(function(t){ return t!==activePanelTower; });
+    closeTowerPanelUI();
+    refreshStats();
+  });
+  document.getElementById('restartBtn').addEventListener('click', function(){ resetGame(); });
+
+  function refreshStats(){
+    goldEl.textContent=gold;
+    livesEl.textContent=lives;
+  }
+
+  var lastTime=null;
+  function loop(ts){
+    if(lastTime===null) lastTime=ts;
+    var dt=(ts-lastTime)/1000;
+    lastTime=ts;
+    if(dt>0.1) dt=0.1;
+    if(!paused && !gameOver){ update(dt*gameSpeed); }
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  function update(dt){
+    animClock += dt;
+    if(waveActive && spawnQueue.length){
+      spawnTimer-=dt;
+      if(spawnTimer<=0){
+        spawnEnemy(spawnQueue.shift());
+        spawnTimer=0.65;
+      }
+    } else if(waveActive && enemies.length===0 && spawnQueue.length===0){
+      waveActive=false;
+      startWaveBtn.disabled=false;
+      startWaveBtn.textContent='Dalgayı Başlat';
+      gold += 15+waveNum*2;
+      refreshStats();
+      showToast('Dalga '+waveNum+' tamamlandı! Bonus altın kazandın');
+    }
+
+    for(var i=enemies.length-1;i>=0;i--){
+      var e=enemies[i];
+      if(e.slowUntil>0){ e.slowUntil-=dt; }
+      var speedMult = e.slowUntil>0 ? e.slowFactor : 1;
+      var remaining = ENEMY_TYPES[e.type].speed*CELL*dt*speedMult;
+      if(e.wp<wpPx.length-1){
+        var aheadDx=wpPx[e.wp+1].x-e.x;
+        if(Math.abs(aheadDx)>0.5) e.facingFlip = aheadDx<0;
+      }
+      while(remaining>0 && e.wp<wpPx.length-1){
+        var target=wpPx[e.wp+1];
+        var dx=target.x-e.x, dy=target.y-e.y;
+        var segDist=Math.hypot(dx,dy);
+        if(segDist<=remaining){
+          e.x=target.x; e.y=target.y;
+          e.traveled+=segDist;
+          remaining-=segDist;
+          e.wp++;
+        } else {
+          e.x+=dx/segDist*remaining;
+          e.y+=dy/segDist*remaining;
+          e.traveled+=remaining;
+          remaining=0;
+        }
+      }
+      if(e.wp>=wpPx.length-1){
+        lives-=ENEMY_TYPES[e.type].dmg;
+        enemies.splice(i,1);
+        refreshStats();
+        if(lives<=0){ triggerGameOver(); }
+      }
+    }
+
+    towers.forEach(function(t){
+      t.attackFlash = Math.max(0, (t.attackFlash||0) - dt*1000);
+      t.cooldown = (t.cooldown||0) - dt*1000;
+      if(t.cooldown>0) return;
+      var def=TOWER_TYPES[t.type];
+      var cx=(t.col+0.5)*CELL, cy=(t.row+0.5)*CELL;
+      var rangePx=def.range*CELL;
+      var best=null, bestTraveled=-1;
+      enemies.forEach(function(e){
+        var d=Math.hypot(e.x-cx,e.y-cy);
+        if(d<=rangePx && e.traveled>bestTraveled){ best=e; bestTraveled=e.traveled; }
+      });
+      if(best){
+        t.facing = (best.x < cx);
+        projectiles.push({x:cx,y:cy,target:best,color:def.proj,
+          damage:def.damage*levelMult(t.level), splash:def.splash, slow:def.slow, speed:CELL*9});
+        t.cooldown=def.rate;
+        t.attackFlash=260;
+      }
+    });
+
+    for(var p2=projectiles.length-1;p2>=0;p2--){
+      var p=projectiles[p2];
+      if(enemies.indexOf(p.target)===-1){ projectiles.splice(p2,1); continue; }
+      var pdx=p.target.x-p.x, pdy=p.target.y-p.y;
+      var pdist=Math.hypot(pdx,pdy);
+      var step=p.speed*dt;
+      if(pdist<=step){
+        applyHit(p);
+        projectiles.splice(p2,1);
+      } else {
+        p.x+=pdx/pdist*step; p.y+=pdy/pdist*step;
+      }
+    }
+
+    for(var f=floatTexts.length-1;f>=0;f--){
+      floatTexts[f].y-=30*dt; floatTexts[f].life-=dt;
+      if(floatTexts[f].life<=0) floatTexts.splice(f,1);
+    }
+  }
+
+  function spawnEnemy(type){
+    var def=ENEMY_TYPES[type];
+    var mult=1+(waveNum-1)*0.13;
+    enemies.push({
+      type:type, hp:def.hp*mult, hpMax:def.hp*mult,
+      x:wpPx[0].x, y:wpPx[0].y, wp:0, traveled:0,
+      slowUntil:0, slowFactor:1, facingFlip:false, bobSeed:Math.random()*10
+    });
+  }
+
+  function applyHit(p){
+    var e=p.target;
+    if(enemies.indexOf(e)===-1) return;
+    e.hp-=p.damage;
+    if(p.slow){ e.slowUntil=1.1; e.slowFactor=1-p.slow; }
+    if(p.splash){
+      enemies.forEach(function(other){
+        if(other!==e && Math.hypot(other.x-e.x,other.y-e.y)<=p.splash*CELL){
+          other.hp-=p.damage*0.5;
+        }
+      });
+    }
+    for(var i=enemies.length-1;i>=0;i--){
+      if(enemies[i].hp<=0) killEnemy(enemies[i]);
+    }
+  }
+
+  function killEnemy(e){
+    var idx=enemies.indexOf(e);
+    if(idx===-1) return;
+    var reward=ENEMY_TYPES[e.type].reward;
+    gold+=reward;
+    floatTexts.push({x:e.x,y:e.y,text:'+'+reward,life:0.8,color:'#ffd54f'});
+    enemies.splice(idx,1);
+    refreshStats();
+  }
+
+  function triggerGameOver(){
+    gameOver=true;
+    if(waveNum>highscore){
+      highscore=waveNum;
+      try{ localStorage.setItem('keepwatch_hs', String(highscore)); }catch(e){}
+    }
+    fmtHS();
+    document.getElementById('goSummary').textContent='Hayatta kalınan dalga: '+waveNum;
+    gameOverPanel.hidden=false;
+  }
+
+  function resetGame(){
+    gold=180; lives=20; waveNum=0; gameSpeed=1; paused=false; gameOver=false;
+    towers=[]; enemies=[]; projectiles=[]; selectedType=null; spawnQueue=[]; waveActive=false; floatTexts=[];
+    startWaveBtn.disabled=false; startWaveBtn.textContent='Dalgayı Başlat';
+    speedBtn.textContent='Hız: 1x'; pauseBtn.textContent='Duraklat';
+    waveEl.textContent='Dalga 0';
+    gameOverPanel.hidden=true;
+    closeTowerPanelUI();
+    updateShopSelection();
+    refreshStats();
+  }
+
+  function render(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    for(var r=0;r<ROWS;r++){
+      for(var c=0;c<COLS;c++){
+        var onPath=isPath(c,r);
+        ctx.fillStyle = onPath ? '#4a3d30' : ((c+r)%2===0?'#24402a':'#1f3824');
+        ctx.fillRect(c*CELL,r*CELL,CELL,CELL);
+      }
+    }
+    if(selectedType){
+      ctx.fillStyle='rgba(212,175,55,0.22)';
+      for(var r2=0;r2<ROWS;r2++){
+        for(var c2=0;c2<COLS;c2++){
+          if(!isPath(c2,r2) && !towerAt(c2,r2)){ ctx.fillRect(c2*CELL,r2*CELL,CELL,CELL); }
+        }
+      }
+    }
+    ctx.font=(CELL*0.6)+'px serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('🕳️', wpPx[0].x, wpPx[0].y);
+    ctx.fillText('🏰', wpPx[wpPx.length-1].x, wpPx[wpPx.length-1].y);
+
+    towers.forEach(function(t){
+      var cx=(t.col+0.5)*CELL, cy=(t.row+0.5)*CELL;
+      var bob=Math.sin(animClock*2.2+(t.bobSeed||0))*1.2;
+      var cfg=Object.assign({}, CHAR_CFG[t.type], {bob:bob, flip:t.facing, glow:(t.attackFlash||0)>0, glowColor:'rgba(255,255,200,0.5)'});
+      drawCharacter(ctx, cx, cy, 1, cfg);
+      if(t.level>1){
+        ctx.font='bold 11px sans-serif'; ctx.fillStyle='#fff'; ctx.textAlign='center';
+        ctx.strokeStyle='rgba(0,0,0,0.6)'; ctx.lineWidth=3;
+        ctx.strokeText(String(t.level), cx+9, cy-13);
+        ctx.fillText(String(t.level), cx+9, cy-13);
+      }
+    });
+
+    enemies.forEach(function(e){
+      var def=ENEMY_TYPES[e.type];
+      var bob=Math.sin(e.traveled*0.12+(e.bobSeed||0))*1.4;
+      var cfg=Object.assign({}, ENEMY_CFG[e.type], {bob:bob, flip:e.facingFlip});
+      drawCharacter(ctx, e.x, e.y, def.radius/11, cfg);
+      if(e.slowUntil>0){
+        ctx.beginPath(); ctx.arc(e.x,e.y-def.radius*0.3,def.radius*1.3,0,Math.PI*2);
+        ctx.strokeStyle='rgba(91,143,209,0.7)'; ctx.lineWidth=2; ctx.stroke();
+      }
+      var w=def.radius*2.2;
+      ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(e.x-w/2,e.y-def.radius-12,w,4);
+      ctx.fillStyle='#5fb86a'; ctx.fillRect(e.x-w/2,e.y-def.radius-12,w*Math.max(0,e.hp/e.hpMax),4);
+    });
+
+    projectiles.forEach(function(p){
+      ctx.beginPath(); ctx.arc(p.x,p.y,4,0,Math.PI*2);
+      ctx.fillStyle=p.color; ctx.fill();
+    });
+
+    floatTexts.forEach(function(f){
+      ctx.globalAlpha=Math.max(0,f.life/0.8);
+      ctx.fillStyle=f.color; ctx.font='bold 13px sans-serif';
+      ctx.fillText(f.text, f.x, f.y);
+      ctx.globalAlpha=1;
+    });
+  }
+
+  function getSnapshot(){
+    return { gold:gold, lives:lives, waveNum:waveNum, gameSpeed:gameSpeed, highscore:highscore,
+      towers: towers.map(function(t){ return {col:t.col,row:t.row,type:t.type,level:t.level,invested:t.invested}; }) };
+  }
+  function restoreSnapshot(data){
+    if(!data) return;
+    if(typeof data.gold==='number') gold=data.gold;
+    if(typeof data.lives==='number') lives=data.lives;
+    if(typeof data.waveNum==='number') waveNum=data.waveNum;
+    if(typeof data.gameSpeed==='number') gameSpeed=data.gameSpeed;
+    if(typeof data.highscore==='number') highscore=Math.max(highscore,data.highscore);
+    if(Array.isArray(data.towers)){
+      towers=data.towers.map(function(t){ var c=Object.assign({},t); c.cooldown=0; c.facing=false; c.attackFlash=0; c.bobSeed=Math.random()*10; return c; });
+    }
+  }
+
+  function start(initData){
+    restoreSnapshot(initData);
+    buildShop();
+    updateShopSelection();
+    refreshStats();
+    fmtHS();
+    waveEl.textContent = waveNum>0 ? ('Dalga '+waveNum) : 'Dalga 0';
+    speedBtn.textContent='Hız: '+gameSpeed+'x';
+    if(window.claude && window.claude.hot && window.claude.hot.snapshot){
+      window.claude.hot.snapshot(getSnapshot);
+    }
+    requestAnimationFrame(loop);
+  }
+
+  if(window.claude && window.claude.hot && window.claude.hot.ready){
+    window.claude.hot.ready(start);
+  } else {
+    start((window.claude && window.claude.hot && window.claude.hot.data) || null);
+  }
+})();
+</script>
